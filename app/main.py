@@ -8,8 +8,8 @@ from hashlib import sha256
 from typing import Dict, Set
 
 
-# Залишаємо оригінальний список як константу ЗАДЛЯ СУМІСНОСТІ З ТЕКСТОМ ЗАВДАННЯ.
-# УВАГА: у цьому файлі ми його НЕ використовуємо для брутфорсу (етичні міркування).
+# Оригінальні хеші залишено лише як частину умов завдання.
+# УВАГА: у цьому файлі вони НЕ використовуються для брутфорсу (етичні міркування).
 PASSWORDS_TO_BRUTE_FORCE = [
     "b4061a4bcfe1a2cbf78286f3fab2fb578266d1bd16c414c650c5ac04dfc696e1",
     "cf0b0cfc90d8b4be14e00114827494ed5522e9aa1c7e6960515b58626cad0b44",
@@ -31,10 +31,8 @@ def sha256_hash_str(to_hash: str) -> str:
 
 def benchmark_sha256(samples: int = 200_000) -> float:
     """
-    Benchmark SHA-256 throughput on UTF-8 strings.
-
-    We hash increasing 8-digit strings '00000000'.. for realism.
-    Returns hashes/sec measurement.
+    Benchmark SHA-256 throughput on UTF-8 strings using 8-digit numeric inputs.
+    Returns hashes/sec measurement and prints ETA for 10^8 candidates.
     """
     start_num = random.randrange(0, 10**8)
     payloads = [f"{(start_num + i) % (10**8):08d}" for i in range(samples)]
@@ -42,13 +40,11 @@ def benchmark_sha256(samples: int = 200_000) -> float:
     t0 = time.perf_counter()
     for p in payloads:
         sha256_hash_str(p)
-    t1 = time.perf_counter()
+    elapsed = time.perf_counter() - t0
 
-    elapsed = t1 - t0
     hps = samples / elapsed if elapsed > 0 else 0.0
     print(f"[benchmark] Hashed {samples:,} strings in {elapsed:.3f}s → {hps:,.0f} hashes/sec")
 
-    # Оцінка часу для повного перебору 10^8 комбінацій:
     total = 100_000_000
     if hps > 0:
         eta_sec = total / hps
@@ -61,22 +57,13 @@ def benchmark_sha256(samples: int = 200_000) -> float:
 
 def _generate_synthetic_targets(count: int = 10) -> Dict[str, str]:
     """
-    SAFELY generate `count` random 8-digit numeric passwords and return
-    dict mapping sha256(hex) -> plaintext.
+    Generate `count` random 8-digit numeric passwords and return map digest->plaintext.
+    SAFE: targets are created locally for demonstration only.
     """
     pins: Set[str] = set()
     while len(pins) < count:
         pins.add(f"{random.randrange(10**8):08d}")
-    targets = {sha256_hash_str(p): p for p in pins}
-
-    print("[lab] Generated synthetic targets (hash → pin), showing up to 3:")
-    for i, (h, p) in enumerate(targets.items()):
-        if i == 3:
-            print("...")
-            break
-        print(" ", h, "->", p)
-    print(f"[lab] Total synthetic targets: {len(targets)}")
-    return targets
+    return {sha256_hash_str(p): p for p in pins}
 
 
 def lab_demo(limit: int = 5_000_000) -> None:
@@ -84,15 +71,20 @@ def lab_demo(limit: int = 5_000_000) -> None:
     SAFE laboratory demo:
       1) Generate your own 10 random 8-digit pins and their SHA-256 hashes locally.
       2) Enumerate 0..limit-1 as 8-digit strings, hashing via sha256_hash_str.
-      3) If a digest matches our locally-generated set, print the plaintext and remove it.
+      3) If a digest matches, print the plaintext and remove it.
       4) Stop early when all are found or the limit is reached.
-
-    NOTE: This does NOT use the provided PASSWORDS_TO_BRUTE_FORCE list.
     """
     targets = _generate_synthetic_targets(count=10)  # digest -> pin
     remaining = set(targets.keys())
 
-    print(f"[lab] Starting enumeration up to {limit:,} candidates (or early exit on success).")
+    print("[lab] Synthetic targets (showing up to 3):")
+    for i, (h, p) in enumerate(targets.items()):
+        if i == 3:
+            print(" ...")
+            break
+        print(" ", h, "->", p)
+
+    print(f"[lab] Start enumeration up to {limit:,} candidates (early exit on success).")
     t0 = time.perf_counter()
     found = 0
 
@@ -100,43 +92,33 @@ def lab_demo(limit: int = 5_000_000) -> None:
         cand = f"{i:08d}"
         digest = sha256_hash_str(cand)
         if digest in remaining:
-            print("[lab] FOUND:", cand)
+            print(cand)  # друк знайденого plaintext — простий формат для скріну
             remaining.remove(digest)
             found += 1
             if not remaining:
                 break
 
     elapsed = time.perf_counter() - t0
-    print(f"[lab] Done. Found {found} / 10 in {elapsed:.3f}s. Remaining: {len(remaining)}")
+    print(f"[lab] Found {found}/10 in {elapsed:.3f}s. Remaining: {len(remaining)}")
     if remaining:
-        print("[lab] (Increase --limit to cover full 1e8 space if you want a guaranteed full find.)")
+        print("[lab] Increase --limit or run full 1e8 to guarantee all 10 are found.")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Safe SHA-256 benchmark and lab demo (no cracking of provided hashes)."
     )
-    parser.add_argument(
-        "--benchmark",
-        action="store_true",
-        help="Run SHA-256 throughput benchmark on UTF-8 strings."
-    )
-    parser.add_argument(
-        "--lab-demo",
-        action="store_true",
-        help="Run a SAFE lab demo using locally generated synthetic hashes."
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=5_000_000,
-        help="Candidate enumeration limit for --lab-demo (default: 5,000,000)."
-    )
+    parser.add_argument("--benchmark", action="store_true",
+                        help="Run SHA-256 throughput benchmark on UTF-8 strings.")
+    parser.add_argument("--lab-demo", action="store_true",
+                        help="Run a SAFE lab demo using locally generated hashes.")
+    parser.add_argument("--limit", type=int, default=5_000_000,
+                        help="Candidate enumeration limit for --lab-demo (default: 5,000,000).")
     args = parser.parse_args()
 
     start_time = time.perf_counter()
 
-    # За замовчуванням запустимо бенчмарк (безпечний). Додатково можна вказати --lab-demo.
+    # За замовчуванням — безпечний бенчмарк. Для демонстрації — --lab-demo.
     if args.benchmark or (not args.benchmark and not args.lab_demo):
         benchmark_sha256()
 
